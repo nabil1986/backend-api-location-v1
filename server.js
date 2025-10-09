@@ -116,6 +116,7 @@ app.get("/api/cars", (req, res) => {
       cars.created_at,
       agences.ville AS city,
       cars.ville_car,
+      cars.premium,
       agences.nom AS agence_nom,
       agences.avatar AS agence_avatar
     FROM cars
