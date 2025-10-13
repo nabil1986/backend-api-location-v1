@@ -118,7 +118,8 @@ app.get("/api/cars", (req, res) => {
       cars.ville_car,
       cars.premium,
       agences.nom AS agence_nom,
-      agences.avatar AS agence_avatar
+      agences.avatar AS agence_avatar,
+      agences.telephone AS agence_tel
     FROM cars
     INNER JOIN agences ON cars.agence_id = agences.id
     WHERE cars.disponible = 1
