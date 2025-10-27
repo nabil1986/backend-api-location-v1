@@ -72,6 +72,7 @@ const sendEmail = (to, subject, text, attachments = []) => {
     to, // Destinataire
     subject, // Sujet de l'email
     text, // Contenu de l'email en texte brut
+    html,
     attachments: attachments
   };
 
