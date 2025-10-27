@@ -772,6 +772,139 @@ app.put("/api/agences/change-password", authenticateToken, (req, res) => {
   });
 });
 
+// 1️⃣ MOT DE PASSE OUBLIÉ → envoi du lien par e-mail
+//---------------------------------------------------------------
+app.post("/api/forgot-password", (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ message: "Email requis" });
+
+  // Vérifier si cet email correspond à un utilisateur existant
+  const sql = `
+    SELECT u.id, u.username, a.email AS agenceEmail
+    FROM users u
+    LEFT JOIN agences a ON u.agence_id = a.id
+    WHERE u.username = ? OR a.email = ?
+  `;
+
+  db.query(sql, [email, email], (err, results) => {
+    if (err) {
+      console.error("Erreur SQL:", err);
+      return res.status(500).json({ message: "Erreur serveur" });
+    }
+
+    if (results.length === 0)
+      return res.status(404).json({ message: "Aucun compte trouvé avec cet e-mail." });
+
+    const user = results[0];
+    const userEmail = user.agenceEmail || user.username;
+
+    // Générer un token JWT temporaire (valable 15 minutes)
+    const resetToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
+      expiresIn: "15m",
+    });
+
+    // Créer le lien de réinitialisation (frontend)
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+
+    // Préparer l’e-mail
+    const subject = "🔒 Réinitialisation de votre mot de passe - LOCA CAR";
+    const logoUrl = `${process.env.FRONTEND_URL}/logo.png`;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; background-color: #f6f9fc; padding: 30px;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+          <div style="background-color: #0052cc; padding: 25px; text-align: center;">
+            <img src="${logoUrl}" alt="LOCA CAR" style="width: 90px; height: auto; margin-bottom: 10px;" />
+            <h1 style="color: #ffffff; margin: 0;">LOCA CAR</h1>
+          </div>
+          <div style="padding: 30px;">
+            <h2 style="color: #333; text-align:center;">Réinitialisation du mot de passe</h2>
+            <p style="font-size: 15px; color: #555;">
+              Bonjour <strong>${user.username}</strong>,
+            </p>
+            <p style="font-size: 15px; color: #555;">
+              Vous avez demandé à réinitialiser votre mot de passe.
+              Cliquez sur le bouton ci-dessous pour le faire.
+            </p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${resetLink}"
+                style="background-color: #0052cc; color: white; text-decoration: none;
+                      padding: 12px 25px; border-radius: 5px; display: inline-block; font-weight: bold;">
+                🔑 Réinitialiser mon mot de passe
+              </a>
+            </div>
+            <p style="font-size: 14px; color: #888;">
+              Ce lien expirera dans <strong>15 minutes</strong> pour des raisons de sécurité.
+            </p>
+            <p style="font-size: 14px; color: #888;">
+              Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet e-mail.
+            </p>
+            <hr style="border:none; border-top:1px solid #eee; margin: 30px 0;">
+            <p style="font-size: 12px; color: #999; text-align: center;">
+              © ${new Date().getFullYear()} LOCA CAR —
+              <a href="${process.env.FRONTEND_URL}" style="color:#0052cc; text-decoration:none;">Visitez notre site</a><br>
+              Assistance : <a href="mailto:${process.env.EMAIL_USER}" style="color:#0052cc;">${process.env.EMAIL_USER}</a>
+            </p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Envoi de l’e-mail
+    sendEmail(userEmail, subject, "Réinitialisation de mot de passe", []);
+
+    res.json({
+      message: "Un lien de réinitialisation a été envoyé à votre adresse e-mail.",
+    });
+  });
+});
+
+
+//---------------------------------------------------------------
+// 2️⃣ RÉINITIALISER LE MOT DE PASSE (via le lien reçu par e-mail)
+//---------------------------------------------------------------
+app.post("/api/reset-password/:token", async (req, res) => {
+  const { token } = req.params;
+  const { password } = req.body;
+
+  if (!password)
+    return res.status(400).json({ message: "Nouveau mot de passe requis." });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Mettre à jour le mot de passe dans les deux tables
+    const updateUserSql = "UPDATE users SET password = ? WHERE id = ?";
+    db.query(updateUserSql, [hashedPassword, decoded.id], (err) => {
+      if (err) {
+        console.error("Erreur UPDATE users:", err);
+        return res.status(500).json({ message: "Erreur serveur (users)." });
+      }
+
+      // Synchroniser avec la table agences (si applicable)
+      const updateAgenceSql = `
+        UPDATE agences SET password = ?
+        WHERE id = (SELECT agence_id FROM users WHERE id = ?)
+      `;
+      db.query(updateAgenceSql, [hashedPassword, decoded.id], (err2) => {
+        if (err2) {
+          console.error("Erreur UPDATE agences:", err2);
+          // pas bloquant, car le compte user est déjà mis à jour
+        }
+
+        res.json({
+          message: "Mot de passe réinitialisé avec succès ✅",
+        });
+      });
+    });
+  } catch (error) {
+    console.error("Erreur reset token:", error);
+    res.status(400).json({ message: "Lien invalide ou expiré." });
+  }
+});
+
+
 
 // ==================== PROFIL AGENCE PUBLIC ====================
 
