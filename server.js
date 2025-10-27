@@ -66,13 +66,12 @@ const transporter = nodemailer.createTransport({
 });
 
 // Fonction pour envoyer un email avec NodeMailer
-const sendEmail = (to, subject, text, attachments = [], html) => {
+const sendEmail = (to, subject, text, attachments = []) => {
   const mailOptions = {
     from: '"SUPPORT LOCA CAR" <aissiaissa095@gmail.com>', // Expéditeur
     to, // Destinataire
     subject, // Sujet de l'email
     text, // Contenu de l'email en texte brut
-    ...(html ? { html } : {}),
     attachments: attachments
   };
 
