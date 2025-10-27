@@ -851,7 +851,7 @@ app.post("/api/forgot-password", (req, res) => {
     `;
 
     // Envoi de l’e-mail
-    sendEmail(userEmail, subject, "Réinitialisation de mot de passe", [], html);
+    sendEmail(userEmail, subject, "Réinitialisation de mot de passe", []);
 
     res.json({
       message: "Un lien de réinitialisation a été envoyé à votre adresse e-mail.",
