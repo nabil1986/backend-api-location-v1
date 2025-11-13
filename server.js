@@ -123,6 +123,7 @@ app.get("/api/cars", (req, res) => {
     FROM cars
     INNER JOIN agences ON cars.agence_id = agences.id
     WHERE cars.disponible = 1
+    AND cars.validation = 1
   `;
 
   db.query(sql, (err, rows) => {
@@ -467,7 +468,7 @@ app.post("/api/cars", authenticateToken, (req, res) => {
   if (req.user.typeUser !== "agence")
     return res.status(403).json({ error: "Réservé aux agences" });
 
-  const { marque, modele, annee, prix_par_jour, photo, type_carburant, boite_vitesse, ville_car, duree_mini_en_jour } = req.body;
+  const { marque, modele, annee, prix_par_jour, photo, type_carburant, boite_vitesse, ville_car, duree_mini_en_jour, validation } = req.body;
 
   // Limite 25 voitures
   const checkSql = "SELECT COUNT(*) AS total FROM cars WHERE agence_id = ?";
@@ -478,12 +479,12 @@ app.post("/api/cars", authenticateToken, (req, res) => {
     }
 
     const insertSql = `
-      INSERT INTO cars (agence_id, marque, modele, annee, prix_par_jour, photo, type_carburant, boite_vitesse, ville_car, disponible, duree_mini_en_jour )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+      INSERT INTO cars (agence_id, marque, modele, annee, prix_par_jour, photo, type_carburant, boite_vitesse, ville_car, disponible, duree_mini_en_jour, validation )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0)
     `;
     db.query(
       insertSql,
-      [req.user.agence_id, marque, modele, annee, prix_par_jour, photo, type_carburant, boite_vitesse, ville_car, duree_mini_en_jour],
+      [req.user.agence_id, marque, modele, annee, prix_par_jour, photo, type_carburant, boite_vitesse, ville_car, duree_mini_en_jour, validation],
       (err2, result) => {
         if (err2) {
           console.error("Erreur ajout voiture:", err2);
@@ -598,7 +599,7 @@ app.get("/api/cars/:id/details", (req, res) => {
            agences.telephone AS agence_tel, agences.ville AS agence_ville, agences.avatar AS agence_avatar
     FROM cars
     INNER JOIN agences ON cars.agence_id = agences.id
-    WHERE cars.id = ?
+    WHERE cars.id = ? AND cars.validation = 1
   `;
   db.query(sqlCar, [carId], (err, rows) => {
     if (err) return res.status(500).json({ error: "Erreur serveur" });
@@ -938,7 +939,7 @@ app.get("/api/agences/:id/cars", (req, res) => {
       c.type_carburant, c.boite_vitesse, c.ville_car,
       c.duree_mini_en_jour, c.created_at
     FROM cars c
-    WHERE c.agence_id = ?
+    WHERE c.agence_id = ?  AND c.validation = 1
     ORDER BY c.created_at DESC
   `;
 
@@ -1044,6 +1045,76 @@ app.get("/api/villes", (req, res) => {
     res.json(results);
   });
 });
+
+
+// ==================== VALIDATION DES VOITURES (ADMIN UNIQUEMENT) ====================
+
+// 🔒 Liste des voitures non validées
+app.get("/api/cars/pending", authenticateToken, (req, res) => {
+  if (req.user.typeUser !== "administrateur") {
+    return res.status(403).json({ error: "Accès réservé à l'administrateur" });
+  }
+
+  const sql = `
+    SELECT cars.*, agences.nom AS agence_nom, agences.ville AS agence_ville
+    FROM cars
+    INNER JOIN agences ON cars.agence_id = agences.id
+    WHERE cars.validation = 0
+    ORDER BY cars.created_at DESC
+  `;
+  db.query(sql, (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(results);
+  });
+});
+
+// 🔒 Validation d’une voiture
+app.put("/api/cars/validateOn/:id", authenticateToken, (req, res) => {
+  if (req.user.typeUser !== "administrateur") {
+    return res.status(403).json({ error: "Accès réservé à l'administrateur" });
+  }
+
+  const { id } = req.params;
+  const sql = "UPDATE cars SET validation = 1 WHERE id = ?";
+
+  db.query(sql, [id], (err, result) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: "✅ Voiture validée avec succès" });
+  });
+});
+
+// 🔒 Validation d’une voiture
+app.put("/api/cars/validateOff/:id", authenticateToken, (req, res) => {
+  if (req.user.typeUser !== "administrateur") {
+    return res.status(403).json({ error: "Accès réservé à l'administrateur" });
+  }
+
+  const { id } = req.params;
+  const sql = "UPDATE cars SET validation = 0 WHERE id = ?";
+
+  db.query(sql, [id], (err, result) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: "✅ Validation supprimée avec succès" });
+  });
+});
+
+app.get("/api/carsValidation", authenticateToken, (req, res) => {
+  if (req.user.typeUser !== "administrateur") {
+    return res.status(403).json({ error: "Accès réservé à l'administrateur" });
+  }
+
+  const sql = `
+    SELECT cars.*, agences.nom AS agence_nom, agences.ville AS agence_ville
+    FROM cars
+    INNER JOIN agences ON cars.agence_id = agences.id
+    ORDER BY cars.created_at DESC
+  `;
+  db.query(sql, (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(results);
+  });
+});
+
 
 
 
